@@ -1,0 +1,28 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtualenv
+.venv/
+venv/
+
+# IDEs
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Python packaging
+dist/
+build/
+*.egg-info/
+
+# Logs
+*.log
+
+# Test output
+test_output.py
+test_code.py
