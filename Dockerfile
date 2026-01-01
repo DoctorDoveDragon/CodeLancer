@@ -1,39 +1,32 @@
-# Use an official Python runtime as a small base
+# Use an official Python runtime as parent image
 FROM python:3.11-slim
 
 # Set working directory
 WORKDIR /app
 
-# Install minimal build deps (if needed for some wheels or building)
+# Install build deps (if any) and pip tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Upgrade pip/setuptools/wheel
+# Upgrade pip
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# Copy requirements file first to leverage Docker cache (if present)
+# Copy only requirements first for caching (if requirements file exists)
 COPY requirements_basic.txt requirements_basic.txt
 RUN if [ -f requirements_basic.txt ]; then pip install --no-cache-dir -r requirements_basic.txt; fi
 
-# Copy project into image
+# Copy project files
 COPY . /app
 
-# Install the package (handles src/ layout via setup.py or pyproject)
+# Install the package from source (src layout)
 RUN pip install --no-cache-dir .
 
-# Verify the package is importable during build (fail fast if not)
-RUN python - <<'PY'
-import importlib, sys
-spec = importlib.util.find_spec('codelancer')
-if not spec:
-    print('ERROR: codelancer package not found after installation')
-    sys.exit(1)
-print('codelancer package installed:', spec)
-PY
+# Optional: verify package is importable
+RUN python -c "import codelancer"
 
-# Expose the port the app will run on
+# Expose port (match uvicorn command)
 EXPOSE 8000
 
-# Default command to run the application via the installed package
-CMD [ "uvicorn", "codelancer.api.main:app", "--host", "0.0.0.0", "--port", "8000" ]
+# Default command - run uvicorn pointing at the installed package
+CMD ["uvicorn", "codelancer.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
