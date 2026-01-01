@@ -23,7 +23,7 @@ COPY . /app
 RUN pip install --no-cache-dir .
 
 # Optional: verify package is importable
-RUN python -c "import importlib.util, sys; spec=importlib.util.find_spec('codelancer'); print('FOUND' if spec else 'MISSING'); sys.exit(0 if spec else 1)"
+RUN python -c "import codelancer"
 
 # Expose port (match uvicorn command)
 EXPOSE 8000
