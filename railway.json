@@ -5,7 +5,7 @@
     "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "startCommand": "python -m uvicorn codelancer.api.main:app --host 0.0.0.0 --port ${PORT:-8000}",
+    "startCommand": "/app/start.sh",
     "healthcheckPath": "/health",
     "healthcheckTimeout": 120,
     "restartPolicyType": "ON_FAILURE",
