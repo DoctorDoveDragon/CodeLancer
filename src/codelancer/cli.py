@@ -7,6 +7,7 @@ Works in two modes:
 """
 
 import argparse
+import os
 import sys
 import uvicorn
 from codelancer.core import CodeGenerator, AutoCorrector
@@ -85,11 +86,11 @@ def main():
 
     dev = sub.add_parser("dev", help="Start API server in development mode (reload enabled)")
     dev.add_argument("--host", default="127.0.0.1", help="Host to bind to")
-    dev.add_argument("--port", type=int, default=8000, help="Port to bind to")
+    dev.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8000)), help="Port to bind to")
 
     srv = sub.add_parser("server", help="Start API server")
     srv.add_argument("--host", default="0.0.0.0")
-    srv.add_argument("--port", type=int, default=8000)
+    srv.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8000)))
     srv.add_argument("--reload", action="store_true", help="Enable reload (dev only)")
 
     gen = sub.add_parser("generate", help="Generate code from description")

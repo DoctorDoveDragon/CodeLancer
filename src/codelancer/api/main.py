@@ -11,6 +11,7 @@ import ast
 from typing import Optional
 
 from codelancer.core import AutoCorrector, CodeGenerator
+from codelancer.config import CORS_ORIGINS, DEV
 
 # Pydantic models for API requests
 class CodeRequest(BaseModel):
@@ -31,14 +32,16 @@ class CorrectionRequest(BaseModel):
 # Initialize FastAPI
 app = FastAPI(
     title="CODELANCER AI",
-    description="AI-powered code analysis, generation, and correction (dev)",
+    description="AI-powered code analysis, generation, and correction",
     version="0.1.0",
+    docs_url="/docs" if DEV else None,
+    redoc_url="/redoc" if DEV else None,
 )
 
-# CORS - permissive for local/dev; tighten in production
+# CORS: permissive in dev, configurable in production
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
