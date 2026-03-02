@@ -18,6 +18,12 @@ def run_server(args):
     # Run uvicorn programmatically; keep reload off for programmatic runs
     uvicorn.run("codelancer.api.main:app", host=args.host, port=args.port, reload=args.reload)
 
+def run_dev(args):
+    # Run uvicorn in development mode with reload enabled by default
+    print(f"🚀 Starting CODELANCER in dev mode on http://{args.host}:{args.port}")
+    print("   Hot-reload is ON. Press Ctrl-C to stop.")
+    uvicorn.run("codelancer.api.main:app", host=args.host, port=args.port, reload=True)
+
 def cmd_generate(args):
     description = args.description
     result = generator.generate(description)
@@ -77,6 +83,10 @@ def main():
     parser = argparse.ArgumentParser(prog="codelancer", description="CODELANCER CLI")
     sub = parser.add_subparsers(dest="cmd")
 
+    dev = sub.add_parser("dev", help="Start API server in development mode (reload enabled)")
+    dev.add_argument("--host", default="127.0.0.1", help="Host to bind to")
+    dev.add_argument("--port", type=int, default=8000, help="Port to bind to")
+
     srv = sub.add_parser("server", help="Start API server")
     srv.add_argument("--host", default="0.0.0.0")
     srv.add_argument("--port", type=int, default=8000)
@@ -98,7 +108,9 @@ def main():
         parser.print_help()
         return
 
-    if args.cmd == "server":
+    if args.cmd == "dev":
+        run_dev(args)
+    elif args.cmd == "server":
         run_server(args)
     elif args.cmd == "generate":
         cmd_generate(args)

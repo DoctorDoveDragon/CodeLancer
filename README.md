@@ -19,6 +19,9 @@ Quick start (local dev)
    or
    uvicorn codelancer.api.main:app --reload
 
+   For development (hot-reload enabled automatically):
+   python -m codelancer.cli dev
+
 4. Use CLI:
    python -m codelancer.cli generate "Create a function that calculates factorial"
    python -m codelancer.cli correct --file some_buggy.py
