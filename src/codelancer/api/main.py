@@ -98,8 +98,17 @@ async def get_logs(
     level: Optional[str] = Query(default=None, description="Filter by log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)"),
     search: Optional[str] = Query(default=None, description="Search substring in log messages"),
     limit: int = Query(default=100, ge=1, le=1000, description="Maximum number of log entries to return"),
+    since: Optional[str] = Query(default=None, description="Return only logs at or after this ISO 8601 timestamp (e.g. 2026-03-02T16:00:00+00:00)"),
 ):
-    records = _log_handler.get_records(level=level, search=search, limit=limit)
+    if since is not None:
+        try:
+            from datetime import datetime as _dt
+            # '+' in query strings is decoded as space; restore it for timezone offsets
+            _dt.fromisoformat(since.replace(" ", "+"))
+        except ValueError:
+            raise HTTPException(status_code=422, detail=f"Invalid 'since' timestamp: {since!r}. Use ISO 8601 format.")
+        since = since.replace(" ", "+")
+    records = _log_handler.get_records(level=level, search=search, limit=limit, since=since)
     return {"logs": records, "count": len(records)}
 
 @app.post("/analyze")
