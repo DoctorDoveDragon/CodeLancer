@@ -16,8 +16,9 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 COPY requirements_basic.txt requirements_basic.txt
 RUN if [ -f requirements_basic.txt ]; then pip install --no-cache-dir -r requirements_basic.txt; fi
 
-# Copy project into image
+# Copy project into image and make start script executable
 COPY . /app
+RUN chmod +x /app/start.sh
 
 # Install the package (handles src/ layout via setup.py)
 RUN pip install --no-cache-dir .
@@ -35,6 +36,10 @@ PY
 # Expose the port the app will run on (Railway overrides with $PORT at runtime)
 EXPOSE 8000
 
-# Default command to run the application via the installed package
-# Uses $PORT env variable injected by Railway (falls back to 8000 for local dev)
-CMD python -m uvicorn codelancer.api.main:app --host 0.0.0.0 --port ${PORT:-8000}
+# Docker-native healthcheck (uses Python's built-in urllib; no curl needed in slim image)
+HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=3 \
+    CMD python /app/healthcheck.py
+
+# Default command: uses start.sh so PORT expansion works regardless of how the
+# container runtime invokes it (shell or exec form)
+CMD ["/app/start.sh"]
