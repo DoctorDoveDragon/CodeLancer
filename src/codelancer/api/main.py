@@ -3,15 +3,17 @@ codelancer.api.main
 FastAPI app and endpoints. Safe to import (no auto-start).
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import datetime
 import ast
+import logging
 from typing import Optional
 
 from codelancer.core import AutoCorrector, CodeGenerator
 from codelancer.config import CORS_ORIGINS, DEV
+from codelancer.log_handler import InMemoryLogHandler
 
 # Pydantic models for API requests
 class CodeRequest(BaseModel):
@@ -47,6 +49,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Logging: attach in-memory handler to root logger so all app logs are captured
+_log_handler = InMemoryLogHandler(maxlen=1000)
+_log_handler.setFormatter(logging.Formatter("%(message)s"))
+logging.getLogger().addHandler(_log_handler)
+logging.getLogger().setLevel(logging.DEBUG if DEV else logging.INFO)
+
+logger = logging.getLogger(__name__)
+
 # Engines
 corrector = AutoCorrector()
 generator = CodeGenerator()
@@ -64,6 +74,15 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
+@app.get("/logs")
+async def get_logs(
+    level: Optional[str] = Query(default=None, description="Filter by log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)"),
+    search: Optional[str] = Query(default=None, description="Search substring in log messages"),
+    limit: int = Query(default=100, ge=1, le=1000, description="Maximum number of log entries to return"),
+):
+    records = _log_handler.get_records(level=level, search=search, limit=limit)
+    return {"logs": records, "count": len(records)}
 
 @app.post("/analyze")
 async def analyze_code(request: CodeRequest):

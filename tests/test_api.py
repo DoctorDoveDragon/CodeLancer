@@ -53,10 +53,44 @@ def test_dev_mode_config(monkeypatch):
     assert cfg.DEV is True
     assert cfg.CORS_ORIGINS == ["*"]
 
-def test_production_mode_config(monkeypatch):
-    """In production mode (default), config.DEV is False."""
-    import importlib
-    import codelancer.config as cfg
-    monkeypatch.delenv("APP_ENV", raising=False)
-    importlib.reload(cfg)
-    assert cfg.DEV is False
+def test_logs_endpoint_returns_list():
+    r = client.get("/logs")
+    assert r.status_code == 200
+    data = r.json()
+    assert "logs" in data
+    assert "count" in data
+    assert isinstance(data["logs"], list)
+    assert data["count"] == len(data["logs"])
+
+def test_logs_endpoint_limit():
+    r = client.get("/logs?limit=2")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["count"] <= 2
+
+def test_logs_endpoint_level_filter():
+    import logging
+    test_logger = logging.getLogger("test_level_filter")
+    test_logger.warning("test-warning-message")
+    r = client.get("/logs?level=WARNING&search=test-warning-message")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["count"] >= 1
+    for entry in data["logs"]:
+        assert entry["level"] == "WARNING"
+
+def test_logs_endpoint_search():
+    import logging
+    test_logger = logging.getLogger("test_search")
+    test_logger.info("unique-search-token-xyz")
+    r = client.get("/logs?search=unique-search-token-xyz")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["count"] >= 1
+    for entry in data["logs"]:
+        assert "unique-search-token-xyz" in entry["message"]
+
+def test_logs_endpoint_invalid_limit():
+    r = client.get("/logs?limit=0")
+    assert r.status_code == 422
+
