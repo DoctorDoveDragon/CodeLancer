@@ -3,9 +3,12 @@ codelancer.api.main
 FastAPI app and endpoints. Safe to import (no auto-start).
 """
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel
 from datetime import datetime
 import ast
@@ -33,25 +36,6 @@ class CorrectionRequest(BaseModel):
     fix_style: bool = True
     fix_syntax: bool = True
 
-# Initialize FastAPI
-app = FastAPI(
-    title="CODELANCER AI",
-    description="AI-powered code analysis, generation, and correction",
-    version="0.1.0",
-    docs_url="/docs" if DEV else None,
-    redoc_url="/redoc" if DEV else None,
-)
-
-# CORS: permissive in dev, configurable in production
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-app.add_middleware(GZipMiddleware, minimum_size=500)
-
 # Logging: attach in-memory handler to root logger so all app logs are captured
 _log_handler = InMemoryLogHandler(maxlen=1000)
 _log_handler.setFormatter(logging.Formatter("%(message)s"))
@@ -64,6 +48,33 @@ logger = logging.getLogger(__name__)
 corrector = AutoCorrector()
 generator = CodeGenerator()
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("CODELANCER AI startup complete")
+    yield
+    logger.info("CODELANCER AI shutdown")
+
+# Initialize FastAPI
+app = FastAPI(
+    title="CODELANCER AI",
+    description="AI-powered code analysis, generation, and correction",
+    version="0.1.0",
+    docs_url="/docs" if DEV else None,
+    redoc_url="/redoc" if DEV else None,
+    lifespan=lifespan,
+)
+
+# CORS: permissive in dev, configurable in production.
+# allow_credentials must not be True when allow_origins contains '*' (CORS spec).
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_credentials="*" not in CORS_ORIGINS,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.add_middleware(GZipMiddleware, minimum_size=500)
+
 # Endpoints
 @app.get("/")
 async def root():
@@ -73,6 +84,10 @@ async def root():
         "version": "0.1.0",
         "timestamp": datetime.now().isoformat(),
     }
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return Response(status_code=204)
 
 @app.get("/health")
 async def health():
