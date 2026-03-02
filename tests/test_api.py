@@ -23,6 +23,37 @@ def test_analyze_basic():
     assert "analysis" in data
     assert data["analysis"]["lines"] >= 1
 
+def test_analyze_syntax_error():
+    payload = {"code": "def bad syntax !!!", "language": "python"}
+    r = client.post("/analyze", json=payload)
+    assert r.status_code == 200
+    data = r.json()
+    assert data["analysis"]["syntax_valid"] is False
+    assert data["analysis"]["syntax_error"] is not None
+
+def test_analyze_large_code_does_not_block_health():
+    """Large code submissions run ast.parse in a thread executor; /health remains reachable."""
+    import threading
+    large_code = "x = 1\n" * 5000
+    payload = {"code": large_code, "language": "python"}
+    results = {}
+
+    def call_analyze():
+        results["analyze"] = client.post("/analyze", json=payload)
+
+    def call_health():
+        results["health"] = client.get("/health")
+
+    t_analyze = threading.Thread(target=call_analyze)
+    t_health = threading.Thread(target=call_health)
+    t_analyze.start()
+    t_health.start()
+    t_analyze.join()
+    t_health.join()
+
+    assert results["analyze"].status_code == 200
+    assert results["health"].status_code == 200
+
 def test_generate_basic():
     payload = {"description": "Create a function that calculates sum", "language": "python"}
     r = client.post("/generate", json=payload)

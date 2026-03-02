@@ -5,9 +5,11 @@ FastAPI app and endpoints. Safe to import (no auto-start).
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
 from datetime import datetime
 import ast
+import asyncio
 import logging
 from typing import Optional
 
@@ -48,6 +50,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 # Logging: attach in-memory handler to root logger so all app logs are captured
 _log_handler = InMemoryLogHandler(maxlen=1000)
@@ -95,7 +98,8 @@ async def analyze_code(request: CodeRequest):
 
         try:
             if request.language == "python":
-                ast.parse(request.code)
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(None, ast.parse, request.code)
         except SyntaxError as e:
             syntax_valid = False
             syntax_error = str(e)
