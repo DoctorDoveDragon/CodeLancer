@@ -29,6 +29,7 @@ class InMemoryLogHandler(logging.Handler):
         level: Optional[str] = None,
         search: Optional[str] = None,
         limit: int = 100,
+        since: Optional[str] = None,
     ) -> List[dict]:
         results = list(self._records)
         if level:
@@ -37,4 +38,10 @@ class InMemoryLogHandler(logging.Handler):
         if search:
             search_lower = search.lower()
             results = [r for r in results if search_lower in r["message"].lower()]
+        if since:
+            since_dt = datetime.fromisoformat(since)
+            results = [
+                r for r in results
+                if datetime.fromisoformat(r["timestamp"]) >= since_dt
+            ]
         return results[-limit:]

@@ -170,6 +170,34 @@ def test_logs_endpoint_invalid_limit():
     r = client.get("/logs?limit=0")
     assert r.status_code == 422
 
+def test_logs_endpoint_since_filter():
+    import logging
+    from datetime import datetime, timezone, timedelta
+
+    test_logger = logging.getLogger("test_since")
+    before = datetime.now(tz=timezone.utc) - timedelta(seconds=1)
+    test_logger.info("since-filter-token")
+    since = before.isoformat()
+    r = client.get(f"/logs?since={since}&search=since-filter-token")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["count"] >= 1
+    for entry in data["logs"]:
+        assert entry["timestamp"] >= since
+
+def test_logs_endpoint_since_future_returns_empty():
+    from datetime import datetime, timezone, timedelta
+
+    future = (datetime.now(tz=timezone.utc) + timedelta(hours=1)).isoformat()
+    r = client.get(f"/logs?since={future}")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["count"] == 0
+
+def test_logs_endpoint_since_invalid():
+    r = client.get("/logs?since=not-a-date")
+    assert r.status_code == 422
+
 def test_favicon():
     r = client.get("/favicon.ico")
     assert r.status_code == 204
