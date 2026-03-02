@@ -1,3 +1,4 @@
+import os
 import pytest
 from fastapi.testclient import TestClient
 from codelancer.api import main as api_main
@@ -35,3 +36,27 @@ def test_correct_basic():
     assert r.status_code == 200
     data = r.json()
     assert "corrected" in data or "corrected" in data.keys()
+
+def test_features_endpoint():
+    r = client.get("/features")
+    assert r.status_code == 200
+    data = r.json()
+    assert "features" in data
+    assert len(data["features"]) == 3
+
+def test_dev_mode_config(monkeypatch):
+    """In dev mode (APP_ENV=dev), config.DEV is True and docs are enabled."""
+    import importlib
+    import codelancer.config as cfg
+    monkeypatch.setenv("APP_ENV", "dev")
+    importlib.reload(cfg)
+    assert cfg.DEV is True
+    assert cfg.CORS_ORIGINS == ["*"]
+
+def test_production_mode_config(monkeypatch):
+    """In production mode (default), config.DEV is False."""
+    import importlib
+    import codelancer.config as cfg
+    monkeypatch.delenv("APP_ENV", raising=False)
+    importlib.reload(cfg)
+    assert cfg.DEV is False
