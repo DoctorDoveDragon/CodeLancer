@@ -170,3 +170,16 @@ def test_logs_endpoint_invalid_limit():
     r = client.get("/logs?limit=0")
     assert r.status_code == 422
 
+def test_favicon():
+    r = client.get("/favicon.ico")
+    assert r.status_code == 204
+
+def test_cors_no_credentials_with_wildcard():
+    """When CORS_ORIGINS contains '*', the CORS response must not allow credentials."""
+    r = client.options(
+        "/",
+        headers={"Origin": "https://example.com", "Access-Control-Request-Method": "GET"},
+    )
+    # 'Access-Control-Allow-Credentials: true' must be absent when origin is wildcard
+    assert r.headers.get("access-control-allow-credentials", "false").lower() != "true"
+
