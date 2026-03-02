@@ -98,7 +98,7 @@ async def analyze_code(request: CodeRequest):
 
         try:
             if request.language == "python":
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 await loop.run_in_executor(None, ast.parse, request.code)
         except SyntaxError as e:
             syntax_valid = False
@@ -121,14 +121,14 @@ async def analyze_code(request: CodeRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/generate")
-async def generate_code(request: GenerationRequest):
+def generate_code(request: GenerationRequest):
     try:
         return generator.generate(request.description)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/correct")
-async def correct_code(request: CorrectionRequest):
+def correct_code(request: CorrectionRequest):
     try:
         return corrector.correct(request.code)
     except Exception as e:

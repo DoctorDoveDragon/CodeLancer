@@ -54,6 +54,51 @@ def test_analyze_large_code_does_not_block_health():
     assert results["analyze"].status_code == 200
     assert results["health"].status_code == 200
 
+def test_generate_does_not_block_health():
+    """The /generate endpoint is a sync def; FastAPI runs it in a thread pool so /health stays reachable."""
+    import threading
+    payload = {"description": "Create a function that calculates sum", "language": "python"}
+    results = {}
+
+    def call_generate():
+        results["generate"] = client.post("/generate", json=payload)
+
+    def call_health():
+        results["health"] = client.get("/health")
+
+    t_generate = threading.Thread(target=call_generate)
+    t_health = threading.Thread(target=call_health)
+    t_generate.start()
+    t_health.start()
+    t_generate.join()
+    t_health.join()
+
+    assert results["generate"].status_code == 200
+    assert results["health"].status_code == 200
+
+def test_correct_does_not_block_health():
+    """The /correct endpoint is a sync def; FastAPI runs it in a thread pool so /health stays reachable."""
+    import threading
+    large_code = "retrun x\n" * 500
+    payload = {"code": large_code, "language": "python"}
+    results = {}
+
+    def call_correct():
+        results["correct"] = client.post("/correct", json=payload)
+
+    def call_health():
+        results["health"] = client.get("/health")
+
+    t_correct = threading.Thread(target=call_correct)
+    t_health = threading.Thread(target=call_health)
+    t_correct.start()
+    t_health.start()
+    t_correct.join()
+    t_health.join()
+
+    assert results["correct"].status_code == 200
+    assert results["health"].status_code == 200
+
 def test_generate_basic():
     payload = {"description": "Create a function that calculates sum", "language": "python"}
     r = client.post("/generate", json=payload)
