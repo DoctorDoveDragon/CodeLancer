@@ -32,8 +32,9 @@ if not spec:
 print('codelancer package installed:', spec)
 PY
 
-# Expose the port the app will run on
+# Expose the port the app will run on (Railway overrides with $PORT at runtime)
 EXPOSE 8000
 
 # Default command to run the application via the installed package
-CMD [ "uvicorn", "codelancer.api.main:app", "--host", "0.0.0.0", "--port", "8000" ]
+# Uses $PORT env variable injected by Railway (falls back to 8000 for local dev)
+CMD uvicorn codelancer.api.main:app --host 0.0.0.0 --port ${PORT:-8000}
