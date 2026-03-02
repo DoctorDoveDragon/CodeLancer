@@ -37,4 +37,4 @@ EXPOSE 8000
 
 # Default command to run the application via the installed package
 # Uses $PORT env variable injected by Railway (falls back to 8000 for local dev)
-CMD uvicorn codelancer.api.main:app --host 0.0.0.0 --port ${PORT:-8000}
+CMD python -m uvicorn codelancer.api.main:app --host 0.0.0.0 --port ${PORT:-8000}
