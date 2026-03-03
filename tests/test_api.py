@@ -202,6 +202,27 @@ def test_favicon():
     r = client.get("/favicon.ico")
     assert r.status_code == 204
 
+def test_ui_endpoint_returns_html():
+    r = client.get("/ui")
+    assert r.status_code == 200
+    assert "text/html" in r.headers.get("content-type", "")
+    body = r.text
+    assert "CODELANCER" in body
+    assert "<html" in body.lower()
+    # Verify key GUI sections are present
+    assert "ana-code" in body   # Analyze tab
+    assert "gen-desc" in body   # Generate tab
+    assert "cor-code" in body   # Correct tab
+    assert "log-lvl" in body    # Logs tab
+
+def test_root_endpoint_includes_dev_and_ui_fields():
+    r = client.get("/")
+    assert r.status_code == 200
+    data = r.json()
+    assert "dev" in data
+    assert "ui" in data
+    assert data["ui"] == "/ui"
+
 def test_cors_no_credentials_with_wildcard():
     """When CORS_ORIGINS contains '*', the CORS response must not allow credentials."""
     r = client.options(

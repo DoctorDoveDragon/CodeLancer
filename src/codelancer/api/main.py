@@ -8,7 +8,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import Response
+from fastapi.responses import HTMLResponse, Response
+from codelancer.api.gui import GUI_HTML
 from pydantic import BaseModel
 from datetime import datetime
 import ast
@@ -83,11 +84,18 @@ async def root():
         "status": "running",
         "version": "0.1.0",
         "timestamp": datetime.now().isoformat(),
+        "dev": DEV,
+        "ui": "/ui",
     }
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
     return Response(status_code=204)
+
+@app.get("/ui", include_in_schema=False)
+async def gui():
+    """Serve the built-in web GUI."""
+    return HTMLResponse(content=GUI_HTML)
 
 @app.get("/health")
 async def health():
