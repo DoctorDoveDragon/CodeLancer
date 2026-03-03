@@ -23,14 +23,23 @@ RUN chmod +x /app/start.sh
 # Install the package (handles src/ layout via setup.py)
 RUN pip install --no-cache-dir .
 
-# Verify the package is importable during build (fail fast if not)
+# Verify the package and ASGI app are importable during build (fail fast if not)
 RUN python - <<'PY'
 import importlib.util, sys
+
 spec = importlib.util.find_spec('codelancer')
 if not spec:
     print('ERROR: codelancer package not found after installation')
     sys.exit(1)
-print('codelancer package installed:', spec)
+print('codelancer package found:', spec)
+
+try:
+    from codelancer.api.main import app
+    assert hasattr(app, 'routes'), 'app object has no routes attribute'
+    print('codelancer.api.main imported OK; routes:', len(app.routes))
+except Exception as exc:
+    print(f'ERROR: codelancer.api.main failed to import: {exc}')
+    sys.exit(1)
 PY
 
 # Expose the port the app will run on (Railway overrides with $PORT at runtime)
