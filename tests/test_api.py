@@ -232,3 +232,24 @@ def test_cors_no_credentials_with_wildcard():
     # 'Access-Control-Allow-Credentials: true' must be absent when origin is wildcard
     assert r.headers.get("access-control-allow-credentials", "false").lower() != "true"
 
+def test_unhandled_exception_returns_500():
+    """Global exception handler must return 500 for unhandled exceptions (no process crash)."""
+    from fastapi import FastAPI as _FastAPI
+    from fastapi.testclient import TestClient as _TestClient
+    from codelancer.api.main import unhandled_exception_handler
+
+    # Build an isolated app that shares only the exception handler, to avoid
+    # mutating the shared global app used by the rest of the test suite.
+    test_app = _FastAPI()
+    test_app.add_exception_handler(Exception, unhandled_exception_handler)
+
+    @test_app.get("/_crash")
+    async def _crash():
+        raise RuntimeError("deliberate test crash")
+
+    tc = _TestClient(test_app, raise_server_exceptions=False)
+    r = tc.get("/_crash")
+    assert r.status_code == 500
+    data = r.json()
+    assert "detail" in data
+
