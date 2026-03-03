@@ -198,6 +198,34 @@ def test_logs_endpoint_since_invalid():
     r = client.get("/logs?since=not-a-date")
     assert r.status_code == 422
 
+def test_logs_endpoint_since_naive_timestamp():
+    """A naive (no-timezone) since timestamp must not crash with a TypeError."""
+    import logging
+    from datetime import datetime, timezone, timedelta
+
+    # Capture the 'since' time before writing the log entry to avoid a race
+    naive = (datetime.now(tz=timezone.utc) - timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%S")
+    test_logger = logging.getLogger("test_naive_since")
+    test_logger.info("naive-since-token")
+    r = client.get(f"/logs?since={naive}&search=naive-since-token")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["count"] >= 1
+
+def test_uvicorn_loggers_attached_after_lifespan():
+    """Lifespan startup must attach _log_handler to uvicorn and uvicorn.access loggers."""
+    import logging
+    from fastapi.testclient import TestClient as _TC
+    from codelancer.api import main as _main
+
+    # Use context manager so the lifespan actually runs (module-level client skips lifespan)
+    with _TC(_main.app) as tc:
+        tc.get("/health")  # ensure app is live
+        uv_logger = logging.getLogger("uvicorn")
+        uv_access_logger = logging.getLogger("uvicorn.access")
+        assert _main._log_handler in uv_logger.handlers, "uvicorn logger missing _log_handler"
+        assert _main._log_handler in uv_access_logger.handlers, "uvicorn.access logger missing _log_handler"
+
 def test_favicon():
     r = client.get("/favicon.ico")
     assert r.status_code == 204
@@ -214,6 +242,7 @@ def test_ui_endpoint_returns_html():
     assert "gen-desc" in body   # Generate tab
     assert "cor-code" in body   # Correct tab
     assert "log-lvl" in body    # Logs tab
+    assert "log-range" in body  # Logs time-range filter
 
 def test_root_endpoint_includes_dev_and_ui_fields():
     r = client.get("/")

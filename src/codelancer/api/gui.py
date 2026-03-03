@@ -196,6 +196,15 @@ pre{background:var(--bg);border:1px solid var(--border);border-radius:.35rem;
   <div class="card">
     <h2>Server Logs</h2>
     <div class="toolbar">
+      <div class="f"><label for="log-range">Time range</label>
+        <select id="log-range">
+          <option value="">All time</option>
+          <option value="15">Last 15 min</option>
+          <option value="60">Last 1 hour</option>
+          <option value="360">Last 6 hours</option>
+          <option value="1440">Last 24 hours</option>
+        </select>
+      </div>
       <div class="f"><label for="log-lvl">Level</label>
         <select id="log-lvl">
           <option value="">All</option>
@@ -345,6 +354,7 @@ pre{background:var(--bg);border:1px solid var(--border);border-radius:.35rem;
   // Logs
   function loadLogs(){
     var btn=document.getElementById('log-btn');
+    var range=document.getElementById('log-range').value;
     var lvl=document.getElementById('log-lvl').value;
     var srch=document.getElementById('log-srch').value.trim();
     var lim=document.getElementById('log-lim').value||50;
@@ -353,6 +363,10 @@ pre{background:var(--bg);border:1px solid var(--border);border-radius:.35rem;
     var url='/logs?limit='+encodeURIComponent(lim);
     if(lvl) url+='&level='+encodeURIComponent(lvl);
     if(srch) url+='&search='+encodeURIComponent(srch);
+    if(range){
+      var since=new Date(Date.now()-parseInt(range,10)*60000).toISOString();
+      url+='&since='+encodeURIComponent(since);
+    }
     fetch(url).then(function(r){ return r.json(); }).then(function(d){
       if(!d.logs.length){
         res.innerHTML='<p class="empty">No log entries found.</p>';

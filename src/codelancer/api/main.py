@@ -51,6 +51,12 @@ generator = CodeGenerator()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Attach in-memory handler to uvicorn loggers so HTTP access logs and
+    # uvicorn error/startup messages are captured and searchable via /logs.
+    # Uvicorn sets propagate=False on its own loggers (via dictConfig), so
+    # records don't reach the root logger; we must add the handler explicitly.
+    for _name in ("uvicorn", "uvicorn.access"):
+        logging.getLogger(_name).addHandler(_log_handler)
     logger.info("CODELANCER AI startup complete")
     yield
     logger.info("CODELANCER AI shutdown")
