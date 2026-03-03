@@ -18,7 +18,11 @@ DEV = APP_ENV == "dev"
 
 # Host / port used by the CLI server/dev commands
 HOST = os.environ.get("HOST", "127.0.0.1" if DEV else "0.0.0.0")
-PORT = int(os.environ.get("PORT", 8000))
+_port_str = os.environ.get("PORT", "").strip()
+try:
+    PORT = int(_port_str) if _port_str else 8000
+except ValueError:
+    PORT = 8000
 
 # CORS: always configurable via CORS_ORIGINS env var (comma-separated list, or "*")
 # Default to "*" to allow all origins in both dev and production unless restricted
