@@ -40,6 +40,8 @@ class InMemoryLogHandler(logging.Handler):
             results = [r for r in results if search_lower in r["message"].lower()]
         if since:
             since_dt = datetime.fromisoformat(since)
+            if since_dt.tzinfo is None:
+                since_dt = since_dt.replace(tzinfo=timezone.utc)
             results = [
                 r for r in results
                 if datetime.fromisoformat(r["timestamp"]) >= since_dt
