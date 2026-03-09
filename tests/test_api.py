@@ -137,6 +137,9 @@ def test_logs_endpoint_returns_list():
     assert "count" in data
     assert isinstance(data["logs"], list)
     assert data["count"] == len(data["logs"])
+    # from_time and to_time must always be present in the response
+    assert "from_time" in data
+    assert "to_time" in data
 
 def test_logs_endpoint_limit():
     r = client.get("/logs?limit=2")

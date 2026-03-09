@@ -30,6 +30,7 @@ class InMemoryLogHandler(logging.Handler):
         search: Optional[str] = None,
         limit: int = 100,
         since: Optional[str] = None,
+        until: Optional[str] = None,
     ) -> List[dict]:
         results = list(self._records)
         if level:
@@ -45,5 +46,13 @@ class InMemoryLogHandler(logging.Handler):
             results = [
                 r for r in results
                 if datetime.fromisoformat(r["timestamp"]) >= since_dt
+            ]
+        if until:
+            until_dt = datetime.fromisoformat(until)
+            if until_dt.tzinfo is None:
+                until_dt = until_dt.replace(tzinfo=timezone.utc)
+            results = [
+                r for r in results
+                if datetime.fromisoformat(r["timestamp"]) <= until_dt
             ]
         return results[-limit:]
