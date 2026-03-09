@@ -60,6 +60,11 @@ generator = CodeGenerator()
 
 # Track application startup timestamp for uptime reporting
 _started_at: Optional[datetime] = None
+# Track graceful-shutdown state so /health returns 503 while Railway drains traffic.
+# Accessed exclusively within the asyncio event loop (signal handler installed via
+# loop.add_signal_handler + async health endpoint), so no cross-thread synchronisation
+# is required.
+_shutting_down: bool = False
 
 
 def _install_shutdown_monitor() -> None:
@@ -96,6 +101,8 @@ def _install_shutdown_monitor() -> None:
 
             def _make_wrapper(cb, args, name: str):
                 def _wrapper() -> None:
+                    global _shutting_down
+                    _shutting_down = True
                     logger.warning(
                         "Container received signal %s — initiating graceful shutdown", name
                     )
@@ -113,8 +120,12 @@ def _install_shutdown_monitor() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _started_at
+    global _started_at, _shutting_down
+    _shutting_down = False
     _t0 = time.monotonic()
+    # Set _started_at before the try block so it is always available for /health
+    # even if the logging setup below raises an unexpected exception.
+    _started_at = datetime.now(timezone.utc)
     # Attach in-memory handler to uvicorn loggers so HTTP access logs and
     # uvicorn error/startup messages are captured and searchable via /logs.
     # Uvicorn sets propagate=False on its own loggers (via dictConfig), so
@@ -122,7 +133,6 @@ async def lifespan(app: FastAPI):
     try:
         for _name in ("uvicorn", "uvicorn.access"):
             logging.getLogger(_name).addHandler(_log_handler)
-        _started_at = datetime.now(timezone.utc)
         _startup_duration = time.monotonic() - _t0
         logger.info(
             "CODELANCER AI startup complete | duration=%.3fs port=%s env=%s",
@@ -130,7 +140,10 @@ async def lifespan(app: FastAPI):
             os.environ.get("PORT", "8000"),
             os.environ.get("APP_ENV", "production"),
         )
-    except (AttributeError, ValueError, TypeError):
+    except Exception:
+        # Intentionally broad: this block only guards non-critical log-handler
+        # attachment; logger.exception() captures the full traceback so the
+        # failure is visible in the logs even though the app continues starting.
         logger.exception("Failed to attach log handlers during startup; continuing anyway")
     # Install signal monitors so the received signal is visible in the logs.
     try:
@@ -198,12 +211,16 @@ async def health():
         round((now - _started_at).total_seconds(), 1)
         if _started_at else None
     )
-    return {
-        "status": "healthy",
-        "timestamp": now.isoformat(),
-        "started_at": _started_at.isoformat() if _started_at else None,
-        "uptime_seconds": uptime,
-    }
+    status = "shutting_down" if _shutting_down else "healthy"
+    return JSONResponse(
+        status_code=503 if _shutting_down else 200,
+        content={
+            "status": status,
+            "timestamp": now.isoformat(),
+            "started_at": _started_at.isoformat() if _started_at else None,
+            "uptime_seconds": uptime,
+        },
+    )
 
 @app.get("/logs")
 async def get_logs(

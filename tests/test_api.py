@@ -318,6 +318,22 @@ def test_startup_log_includes_port_and_env():
     assert "port=" in msg, f"startup log should include port=, got: {msg!r}"
     assert "env=" in msg, f"startup log should include env=, got: {msg!r}"
 
+def test_health_returns_503_when_shutting_down(monkeypatch):
+    """
+    /health must return 503 when _shutting_down is True so that Railway's health
+    checker detects the degraded state and stops routing traffic to the container
+    before uvicorn closes its listening socket — eliminating the 502 window.
+    """
+    import codelancer.api.main as _main
+    monkeypatch.setattr(_main, "_shutting_down", True)
+    r = client.get("/health")
+    assert r.status_code == 503
+    data = r.json()
+    assert data["status"] == "shutting_down"
+    assert "started_at" in data
+    assert "uptime_seconds" in data
+
+
 def test_shutdown_log_includes_uptime():
     """
     After the lifespan shuts down, the in-memory logs must contain a shutdown
