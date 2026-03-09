@@ -29,3 +29,7 @@ except ValueError:
 CORS_ORIGINS = [o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()]
 if not CORS_ORIGINS:
     CORS_ORIGINS = ["*"]
+
+# DATABASE_URL: connection string for the database (e.g. postgresql://user:pass@host/db)
+# If not set the application runs without a database connection.
+DATABASE_URL: str = os.environ.get("DATABASE_URL", "")
