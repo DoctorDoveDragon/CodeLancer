@@ -7,4 +7,5 @@ exec python -m uvicorn codelancer.api.main:app \
     --proxy-headers \
     --forwarded-allow-ips='*' \
     --log-level info \
-    --timeout-keep-alive 75
+    --timeout-keep-alive 75 \
+    --timeout-graceful-shutdown 30

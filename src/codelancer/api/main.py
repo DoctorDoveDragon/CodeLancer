@@ -43,7 +43,13 @@ class CorrectionRequest(BaseModel):
 # Logging: attach in-memory handler to root logger so all app logs are captured
 _log_handler = InMemoryLogHandler(maxlen=1000)
 _log_handler.setFormatter(logging.Formatter("%(message)s"))
+# StreamHandler ensures our app messages (e.g. SIGTERM warnings) are written to
+# stdout and therefore visible in Railway's log stream.  Uvicorn uses its own
+# loggers with propagate=False, so this handler only affects our application code.
+_stdout_handler = logging.StreamHandler()
+_stdout_handler.setFormatter(logging.Formatter("%(levelname)-8s %(name)s %(message)s"))
 logging.getLogger().addHandler(_log_handler)
+logging.getLogger().addHandler(_stdout_handler)
 logging.getLogger().setLevel(logging.DEBUG if DEV else logging.INFO)
 
 logger = logging.getLogger(__name__)
