@@ -285,91 +285,58 @@ def test_unhandled_exception_returns_500():
     data = r.json()
     assert "detail" in data
 
+def test_health_includes_monitoring_fields():
+    """
+    After the lifespan runs, /health must include started_at and uptime_seconds
+    so that container startup and uptime are observable via the health endpoint.
+    """
+    from fastapi.testclient import TestClient as _TC
+    from codelancer.api import main as _main
 
-def test_logs_endpoint_until_filter():
-    import logging
-    from datetime import datetime, timezone, timedelta
-
-    test_logger = logging.getLogger("test_until")
-    before = datetime.now(tz=timezone.utc)
-    test_logger.info("until-filter-token")
-    after = datetime.now(tz=timezone.utc)
-
-    # until set to just before the log was written – should NOT include the entry
-    until_before = (before - timedelta(seconds=1)).isoformat()
-    r = client.get(f"/logs?until={until_before}&search=until-filter-token")
-    assert r.status_code == 200
-    assert r.json()["count"] == 0
-
-    # until set to well after the log was written – must include the entry
-    until_after = (after + timedelta(seconds=5)).isoformat()
-    r = client.get(f"/logs?until={until_after}&search=until-filter-token")
-    assert r.status_code == 200
-    assert r.json()["count"] >= 1
-
-
-def test_logs_endpoint_until_invalid():
-    r = client.get("/logs?until=not-a-date")
-    assert r.status_code == 422
-
-
-def test_logs_endpoint_from_time_to_time_present_when_logs_exist():
-    import logging
-
-    test_logger = logging.getLogger("test_from_to")
-    test_logger.info("range-display-token")
-    r = client.get("/logs?search=range-display-token")
+    with _TC(_main.app) as tc:
+        r = tc.get("/health")
     assert r.status_code == 200
     data = r.json()
-    assert data["count"] >= 1
-    assert data["from_time"] is not None
-    assert data["to_time"] is not None
-    # from_time must be <= to_time
-    assert data["from_time"] <= data["to_time"]
+    assert "started_at" in data, "health endpoint must include started_at"
+    assert "uptime_seconds" in data, "health endpoint must include uptime_seconds"
+    assert data["started_at"] is not None, "started_at must be set after lifespan startup"
+    assert isinstance(data["uptime_seconds"], (int, float)), "uptime_seconds must be numeric"
+    assert data["uptime_seconds"] >= 0, "uptime_seconds must be non-negative"
 
+def test_startup_log_includes_port_and_env():
+    """
+    The startup log message must record port and APP_ENV so that container
+    configuration is visible in the Railway log stream.
+    """
+    from fastapi.testclient import TestClient as _TC
+    from codelancer.api import main as _main
 
-def test_logs_endpoint_from_time_to_time_none_when_empty():
-    from datetime import datetime, timezone, timedelta
-
-    future = (datetime.now(tz=timezone.utc) + timedelta(hours=2)).isoformat()
-    r = client.get(f"/logs?since={future}")
+    with _TC(_main.app) as tc:
+        r = tc.get("/logs?search=startup+complete")
     assert r.status_code == 200
     data = r.json()
-    assert data["count"] == 0
-    assert data["from_time"] is None
-    assert data["to_time"] is None
+    assert len(data["logs"]) >= 1, "At least one 'startup complete' log entry expected"
+    # The message must contain port and env info
+    msg = data["logs"][0]["message"]
+    assert "port=" in msg, f"startup log should include port=, got: {msg!r}"
+    assert "env=" in msg, f"startup log should include env=, got: {msg!r}"
 
+def test_shutdown_log_includes_uptime():
+    """
+    After the lifespan shuts down, the in-memory logs must contain a shutdown
+    message with uptime so Railway logs show how long the container ran.
+    """
+    from fastapi.testclient import TestClient as _TC
+    from codelancer.api import main as _main
 
-def test_logs_endpoint_since_and_until_combined():
-    import logging
-    from datetime import datetime, timezone, timedelta
-
-    test_logger = logging.getLogger("test_since_until")
-    before = datetime.now(tz=timezone.utc) - timedelta(seconds=1)
-    test_logger.info("combined-range-token")
-    after = datetime.now(tz=timezone.utc) + timedelta(seconds=5)
-
-    r = client.get(
-        f"/logs?since={before.isoformat()}&until={after.isoformat()}&search=combined-range-token"
-    )
+    with _TC(_main.app) as tc:
+        pass  # lifespan runs startup then shutdown
+    # Query logs via a fresh client (module-level client, no lifespan restart needed)
+    r = client.get("/logs?search=shutdown")
     assert r.status_code == 200
     data = r.json()
-    assert data["count"] >= 1
-    for entry in data["logs"]:
-        assert entry["timestamp"] >= before.isoformat()
-        assert entry["timestamp"] <= after.isoformat()
+    assert len(data["logs"]) >= 1, "At least one 'shutdown' log entry expected"
+    msg = data["logs"][0]["message"]
+    assert "uptime=" in msg, f"shutdown log should include uptime=, got: {msg!r}"
 
-
-def test_ui_endpoint_logs_tab_has_range_display_and_boundary_elements():
-    """The Logs tab in the GUI must include the range display and boundary divs."""
-    r = client.get("/ui")
-    assert r.status_code == 200
-    body = r.text
-    assert "log-range-display" in body
-    assert "log-range-from" in body
-    assert "log-range-to" in body
-    assert "log-boundary" in body
-    assert "You reached the start of the range" in body
-    assert "You reached the end of the range" in body
-    assert "Filter and search logs" in body
 

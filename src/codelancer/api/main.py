@@ -11,10 +11,13 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from codelancer.api.gui import GUI_HTML
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timezone
 import ast
 import asyncio
 import logging
+import os
+import signal as _signal
+import time
 from typing import Optional
 
 from codelancer.core import AutoCorrector, CodeGenerator
@@ -40,7 +43,13 @@ class CorrectionRequest(BaseModel):
 # Logging: attach in-memory handler to root logger so all app logs are captured
 _log_handler = InMemoryLogHandler(maxlen=1000)
 _log_handler.setFormatter(logging.Formatter("%(message)s"))
+# StreamHandler ensures our app messages (e.g. SIGTERM warnings) are written to
+# stdout and therefore visible in Railway's log stream.  Uvicorn uses its own
+# loggers with propagate=False, so this handler only affects our application code.
+_stdout_handler = logging.StreamHandler()
+_stdout_handler.setFormatter(logging.Formatter("%(levelname)-8s %(name)s %(message)s"))
 logging.getLogger().addHandler(_log_handler)
+logging.getLogger().addHandler(_stdout_handler)
 logging.getLogger().setLevel(logging.DEBUG if DEV else logging.INFO)
 
 logger = logging.getLogger(__name__)
@@ -49,8 +58,63 @@ logger = logging.getLogger(__name__)
 corrector = AutoCorrector()
 generator = CodeGenerator()
 
+# Track application startup timestamp for uptime reporting
+_started_at: Optional[datetime] = None
+
+
+def _install_shutdown_monitor() -> None:
+    """
+    Wrap uvicorn's asyncio signal handlers for SIGTERM/SIGINT so that the received
+    signal is logged before uvicorn initiates its graceful-shutdown sequence.
+
+    Must be called from within a running event loop (e.g. inside the lifespan
+    coroutine), *after* uvicorn has registered its own signal handlers via
+    ``loop.add_signal_handler()``.  All errors are suppressed so that a failure
+    here never prevents the application from starting.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+        # _signal_handlers is a private dict but has been stable since Python 3.4.
+        signal_handlers = getattr(loop, "_signal_handlers", {})
+        for sig in (
+            getattr(_signal, "SIGTERM", None),
+            getattr(_signal, "SIGINT", None),
+        ):
+            if sig is None:
+                continue  # Signal not available on this platform
+            handle = signal_handlers.get(sig)
+            if handle is None:
+                continue  # No asyncio handler registered for this signal
+            orig_cb = getattr(handle, "_callback", None)
+            orig_args = getattr(handle, "_args", ())
+            if orig_cb is None:
+                continue
+            try:
+                sig_name = _signal.Signals(sig).name
+            except ValueError:
+                sig_name = str(sig)
+
+            def _make_wrapper(cb, args, name: str):
+                def _wrapper() -> None:
+                    logger.warning(
+                        "Container received signal %s — initiating graceful shutdown", name
+                    )
+                    try:
+                        cb(*args)
+                    except Exception:
+                        logger.exception(
+                            "Error forwarding signal %s to uvicorn handler", name
+                        )
+                return _wrapper
+
+            loop.add_signal_handler(sig, _make_wrapper(orig_cb, orig_args, sig_name))
+    except (RuntimeError, NotImplementedError, AttributeError):
+        pass  # Not in an async context, or platform does not support signal handlers
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _started_at
+    _t0 = time.monotonic()
     # Attach in-memory handler to uvicorn loggers so HTTP access logs and
     # uvicorn error/startup messages are captured and searchable via /logs.
     # Uvicorn sets propagate=False on its own loggers (via dictConfig), so
@@ -58,11 +122,27 @@ async def lifespan(app: FastAPI):
     try:
         for _name in ("uvicorn", "uvicorn.access"):
             logging.getLogger(_name).addHandler(_log_handler)
-        logger.info("CODELANCER AI startup complete")
+        _started_at = datetime.now(timezone.utc)
+        _startup_duration = time.monotonic() - _t0
+        logger.info(
+            "CODELANCER AI startup complete | duration=%.3fs port=%s env=%s",
+            _startup_duration,
+            os.environ.get("PORT", "8000"),
+            os.environ.get("APP_ENV", "production"),
+        )
     except (AttributeError, ValueError, TypeError):
         logger.exception("Failed to attach log handlers during startup; continuing anyway")
+    # Install signal monitors so the received signal is visible in the logs.
+    try:
+        _install_shutdown_monitor()
+    except Exception:
+        pass  # Non-critical; must not prevent startup
     yield
-    logger.info("CODELANCER AI shutdown")
+    _uptime = (
+        round((datetime.now(timezone.utc) - _started_at).total_seconds(), 1)
+        if _started_at else 0.0
+    )
+    logger.info("CODELANCER AI shutdown | uptime=%.1fs", _uptime)
 
 # Initialize FastAPI
 app = FastAPI(
@@ -113,7 +193,17 @@ async def gui():
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+    now = datetime.now(timezone.utc)
+    uptime = (
+        round((now - _started_at).total_seconds(), 1)
+        if _started_at else None
+    )
+    return {
+        "status": "healthy",
+        "timestamp": now.isoformat(),
+        "started_at": _started_at.isoformat() if _started_at else None,
+        "uptime_seconds": uptime,
+    }
 
 @app.get("/logs")
 async def get_logs(
