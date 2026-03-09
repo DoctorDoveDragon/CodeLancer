@@ -21,7 +21,7 @@ import time
 from typing import Optional
 
 from codelancer.core import AutoCorrector, CodeGenerator
-from codelancer.config import CORS_ORIGINS, DEV
+from codelancer.config import CORS_ORIGINS, DATABASE_URL, DEV
 from codelancer.log_handler import InMemoryLogHandler
 
 # Pydantic models for API requests
@@ -135,10 +135,11 @@ async def lifespan(app: FastAPI):
             logging.getLogger(_name).addHandler(_log_handler)
         _startup_duration = time.monotonic() - _t0
         logger.info(
-            "CODELANCER AI startup complete | duration=%.3fs port=%s env=%s",
+            "CODELANCER AI startup complete | duration=%.3fs port=%s env=%s db=%s",
             _startup_duration,
             os.environ.get("PORT", "8000"),
             os.environ.get("APP_ENV", "production"),
+            "configured" if DATABASE_URL else "none",
         )
     except Exception:
         # Intentionally broad: this block only guards non-critical log-handler

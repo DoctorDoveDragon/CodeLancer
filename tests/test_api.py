@@ -129,6 +129,21 @@ def test_dev_mode_config(monkeypatch):
     assert cfg.DEV is True
     assert cfg.CORS_ORIGINS == ["*"]
 
+def test_database_url_config(monkeypatch):
+    """DATABASE_URL is read from the environment and defaults to empty string."""
+    import importlib
+    import codelancer.config as cfg
+
+    # Default: not set
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    importlib.reload(cfg)
+    assert cfg.DATABASE_URL == ""
+
+    # Set: value is picked up
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host/db")
+    importlib.reload(cfg)
+    assert cfg.DATABASE_URL == "postgresql://user:pass@host/db"
+
 def test_logs_endpoint_returns_list():
     r = client.get("/logs")
     assert r.status_code == 200
@@ -316,10 +331,11 @@ def test_startup_log_includes_port_and_env():
     assert r.status_code == 200
     data = r.json()
     assert len(data["logs"]) >= 1, "At least one 'startup complete' log entry expected"
-    # The message must contain port and env info
+    # The message must contain port, env and db info
     msg = data["logs"][0]["message"]
     assert "port=" in msg, f"startup log should include port=, got: {msg!r}"
     assert "env=" in msg, f"startup log should include env=, got: {msg!r}"
+    assert "db=" in msg, f"startup log should include db=, got: {msg!r}"
 
 def test_health_returns_503_when_shutting_down(monkeypatch):
     """
