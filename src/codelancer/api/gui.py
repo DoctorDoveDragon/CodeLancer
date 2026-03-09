@@ -105,6 +105,13 @@ pre{background:var(--bg);border:1px solid var(--border);border-radius:.35rem;
 .toolbar{display:flex;gap:.65rem;flex-wrap:wrap;margin-bottom:1rem;align-items:flex-end}
 .toolbar .f{flex:1;min-width:110px}
 .empty{color:var(--muted);font-size:.85rem;padding:.5rem 0}
+.log-range-display{font-size:.8rem;color:var(--muted);margin-bottom:.75rem;
+  padding:.5rem .75rem;background:var(--bg);border:1px solid var(--border);
+  border-radius:.35rem;display:flex;align-items:center;gap:.5rem}
+.log-range-display .range-sep{color:var(--border)}
+.log-range-display .range-ts{color:var(--accent);font-weight:500}
+.log-boundary{text-align:center;font-size:.75rem;color:var(--muted);
+  padding:.45rem;border:1px dashed var(--border);border-radius:.25rem;margin:.35rem 0}
 </style>
 </head>
 <body>
@@ -194,7 +201,7 @@ pre{background:var(--bg);border:1px solid var(--border);border-radius:.35rem;
 <!-- Logs -->
 <div class="panel" id="panel-logs">
   <div class="card">
-    <h2>Server Logs</h2>
+    <h2>Filter and search logs</h2>
     <div class="toolbar">
       <div class="f"><label for="log-range">Time range</label>
         <select id="log-range">
@@ -223,6 +230,12 @@ pre{background:var(--bg);border:1px solid var(--border);border-radius:.35rem;
         <input type="number" id="log-lim" value="50" min="1" max="1000">
       </div>
       <button class="btn btn-p" id="log-btn"><span>Refresh</span></button>
+    </div>
+    <div id="log-range-display" class="log-range-display" style="display:none">
+      <span>&#128337;</span>
+      <span class="range-ts" id="log-range-from"></span>
+      <span class="range-sep">&mdash;</span>
+      <span class="range-ts" id="log-range-to"></span>
     </div>
     <div id="log-res"></div>
   </div>
@@ -352,6 +365,10 @@ pre{background:var(--bg);border:1px solid var(--border);border-radius:.35rem;
   });
 
   // Logs
+  function fmtTs(iso){
+    if(!iso) return '';
+    try{ return new Date(iso).toLocaleString(); }catch(e){ return iso; }
+  }
   function loadLogs(){
     var btn=document.getElementById('log-btn');
     var range=document.getElementById('log-range').value;
@@ -359,19 +376,36 @@ pre{background:var(--bg);border:1px solid var(--border);border-radius:.35rem;
     var srch=document.getElementById('log-srch').value.trim();
     var lim=document.getElementById('log-lim').value||50;
     var res=document.getElementById('log-res');
+    var rangeDisplay=document.getElementById('log-range-display');
     spin(btn,'Loading');
     var url='/logs?limit='+encodeURIComponent(lim);
     if(lvl) url+='&level='+encodeURIComponent(lvl);
     if(srch) url+='&search='+encodeURIComponent(srch);
+    var sinceTs=null, untilTs=null;
     if(range){
-      var since=new Date(Date.now()-parseInt(range,10)*60000).toISOString();
-      url+='&since='+encodeURIComponent(since);
+      sinceTs=new Date(Date.now()-parseInt(range,10)*60000).toISOString();
+      untilTs=new Date().toISOString();
+      url+='&since='+encodeURIComponent(sinceTs);
+      url+='&until='+encodeURIComponent(untilTs);
     }
     fetch(url).then(function(r){ return r.json(); }).then(function(d){
+      // Date range display
+      var from=d.from_time||sinceTs, to=d.to_time||untilTs;
+      if(from||to){
+        document.getElementById('log-range-from').textContent=fmtTs(from)||'';
+        document.getElementById('log-range-to').textContent=fmtTs(to)||'';
+        rangeDisplay.style.display='flex';
+      } else {
+        rangeDisplay.style.display='none';
+      }
       if(!d.logs.length){
         res.innerHTML='<p class="empty">No log entries found.</p>';
       } else {
-        res.innerHTML='<div class="log-wrap">'
+        var startMsg='You reached the start of the range'+(from?' '+fmtTs(from):'');
+        var endMsg='You reached the end of the range'+(to?' '+fmtTs(to):'');
+        res.innerHTML=
+          '<div class="log-boundary">&#8593; '+esc(startMsg)+'</div>'
+          +'<div class="log-wrap">'
           +d.logs.slice().reverse().map(function(l){
             return '<div class="log-row">'
               +'<span class="log-ts">'+esc(l.timestamp)+'</span>'
@@ -379,7 +413,8 @@ pre{background:var(--bg);border:1px solid var(--border);border-radius:.35rem;
               +'<span class="log-msg">'+esc(l.message)+'</span>'
               +'</div>';
           }).join('')
-          +'</div>';
+          +'</div>'
+          +'<div class="log-boundary">&#8595; '+esc(endMsg)+'</div>';
       }
     }).catch(function(e){ res.innerHTML=errHtml(e.message); })
     .finally(function(){ restore(btn,'Refresh'); });

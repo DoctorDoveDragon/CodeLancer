@@ -137,6 +137,9 @@ def test_logs_endpoint_returns_list():
     assert "count" in data
     assert isinstance(data["logs"], list)
     assert data["count"] == len(data["logs"])
+    # from_time and to_time must always be present in the response
+    assert "from_time" in data
+    assert "to_time" in data
 
 def test_logs_endpoint_limit():
     r = client.get("/logs?limit=2")
@@ -281,4 +284,92 @@ def test_unhandled_exception_returns_500():
     assert r.status_code == 500
     data = r.json()
     assert "detail" in data
+
+
+def test_logs_endpoint_until_filter():
+    import logging
+    from datetime import datetime, timezone, timedelta
+
+    test_logger = logging.getLogger("test_until")
+    before = datetime.now(tz=timezone.utc)
+    test_logger.info("until-filter-token")
+    after = datetime.now(tz=timezone.utc)
+
+    # until set to just before the log was written – should NOT include the entry
+    until_before = (before - timedelta(seconds=1)).isoformat()
+    r = client.get(f"/logs?until={until_before}&search=until-filter-token")
+    assert r.status_code == 200
+    assert r.json()["count"] == 0
+
+    # until set to well after the log was written – must include the entry
+    until_after = (after + timedelta(seconds=5)).isoformat()
+    r = client.get(f"/logs?until={until_after}&search=until-filter-token")
+    assert r.status_code == 200
+    assert r.json()["count"] >= 1
+
+
+def test_logs_endpoint_until_invalid():
+    r = client.get("/logs?until=not-a-date")
+    assert r.status_code == 422
+
+
+def test_logs_endpoint_from_time_to_time_present_when_logs_exist():
+    import logging
+
+    test_logger = logging.getLogger("test_from_to")
+    test_logger.info("range-display-token")
+    r = client.get("/logs?search=range-display-token")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["count"] >= 1
+    assert data["from_time"] is not None
+    assert data["to_time"] is not None
+    # from_time must be <= to_time
+    assert data["from_time"] <= data["to_time"]
+
+
+def test_logs_endpoint_from_time_to_time_none_when_empty():
+    from datetime import datetime, timezone, timedelta
+
+    future = (datetime.now(tz=timezone.utc) + timedelta(hours=2)).isoformat()
+    r = client.get(f"/logs?since={future}")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["count"] == 0
+    assert data["from_time"] is None
+    assert data["to_time"] is None
+
+
+def test_logs_endpoint_since_and_until_combined():
+    import logging
+    from datetime import datetime, timezone, timedelta
+
+    test_logger = logging.getLogger("test_since_until")
+    before = datetime.now(tz=timezone.utc) - timedelta(seconds=1)
+    test_logger.info("combined-range-token")
+    after = datetime.now(tz=timezone.utc) + timedelta(seconds=5)
+
+    r = client.get(
+        f"/logs?since={before.isoformat()}&until={after.isoformat()}&search=combined-range-token"
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["count"] >= 1
+    for entry in data["logs"]:
+        assert entry["timestamp"] >= before.isoformat()
+        assert entry["timestamp"] <= after.isoformat()
+
+
+def test_ui_endpoint_logs_tab_has_range_display_and_boundary_elements():
+    """The Logs tab in the GUI must include the range display and boundary divs."""
+    r = client.get("/ui")
+    assert r.status_code == 200
+    body = r.text
+    assert "log-range-display" in body
+    assert "log-range-from" in body
+    assert "log-range-to" in body
+    assert "log-boundary" in body
+    assert "You reached the start of the range" in body
+    assert "You reached the end of the range" in body
+    assert "Filter and search logs" in body
 
