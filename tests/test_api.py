@@ -372,3 +372,11 @@ def test_shutdown_log_includes_uptime():
     assert "uptime=" in msg, f"shutdown log should include uptime=, got: {msg!r}"
 
 
+def test_drain_delay_constant_positive():
+    """_DRAIN_DELAY_S must be a positive integer so the drain window is non-zero."""
+    from codelancer.api import main as _main
+
+    assert isinstance(_main._DRAIN_DELAY_S, int), "_DRAIN_DELAY_S must be an int"
+    assert _main._DRAIN_DELAY_S > 0, "_DRAIN_DELAY_S must be positive"
+
+
