@@ -66,11 +66,24 @@ _started_at: Optional[datetime] = None
 # is required.
 _shutting_down: bool = False
 
+# Seconds to wait after marking _shutting_down=True before forwarding the signal
+# to uvicorn's handler.  During this window /health returns 503, giving Railway's
+# load-balancer time to drain the container and stop routing new requests *before*
+# uvicorn closes its listening socket — eliminating the 502 window on re-deploy.
+_DRAIN_DELAY_S: int = 5
+
 
 def _install_shutdown_monitor() -> None:
     """
-    Wrap uvicorn's asyncio signal handlers for SIGTERM/SIGINT so that the received
-    signal is logged before uvicorn initiates its graceful-shutdown sequence.
+    Wrap uvicorn's asyncio signal handlers for SIGTERM/SIGINT so that:
+
+    1. ``_shutting_down`` is set to ``True`` immediately (causing /health to
+       return 503) and the received signal is logged.
+    2. A short drain delay (``_DRAIN_DELAY_S`` seconds) is awaited so that
+       Railway's load-balancer has time to notice the 503 and stop routing new
+       requests to this container.
+    3. Only after the drain window expires is uvicorn's own handler called to
+       begin closing connections.
 
     Must be called from within a running event loop (e.g. inside the lifespan
     coroutine), *after* uvicorn has registered its own signal handlers via
@@ -99,22 +112,39 @@ def _install_shutdown_monitor() -> None:
             except ValueError:
                 sig_name = str(sig)
 
-            def _make_wrapper(cb, args, name: str):
+            def _make_wrapper(cb, args, name: str, event_loop):
                 def _wrapper() -> None:
                     global _shutting_down
                     _shutting_down = True
                     logger.warning(
-                        "Container received signal %s — initiating graceful shutdown", name
+                        "Container received signal %s — drain window %ds, then graceful shutdown",
+                        name,
+                        _DRAIN_DELAY_S,
                     )
-                    try:
-                        cb(*args)
-                    except Exception:
-                        logger.exception(
-                            "Error forwarding signal %s to uvicorn handler", name
-                        )
+
+                    async def _deferred_shutdown() -> None:
+                        # Wait for Railway to stop routing before closing the socket.
+                        await asyncio.sleep(_DRAIN_DELAY_S)
+                        try:
+                            cb(*args)
+                        except Exception:
+                            logger.exception(
+                                "Error forwarding signal %s to uvicorn handler", name
+                            )
+
+                    task = event_loop.create_task(_deferred_shutdown())
+                    # Attach a callback so any unexpected exception is logged and
+                    # not silently swallowed as an "exception was never retrieved"
+                    # warning when the event loop closes.
+                    task.add_done_callback(
+                        lambda t: logger.exception(
+                            "Deferred shutdown task raised an unexpected exception"
+                        ) if not t.cancelled() and t.exception() else None
+                    )
+
                 return _wrapper
 
-            loop.add_signal_handler(sig, _make_wrapper(orig_cb, orig_args, sig_name))
+            loop.add_signal_handler(sig, _make_wrapper(orig_cb, orig_args, sig_name, loop))
     except (RuntimeError, NotImplementedError, AttributeError):
         pass  # Not in an async context, or platform does not support signal handlers
 
